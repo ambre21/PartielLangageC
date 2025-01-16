@@ -68,3 +68,19 @@
 | **Semaine 1** | **LD_PRELOAD** : mise en place et hooks de base      | 15-20h       |
 | **Semaine 2** | **Command & Control** : serveur TCP multithread      | 15-20h       |
 | **Semaine 3** | **Furtivité et finalisation** : cacher un fichier, tests, rapport | 15-20h       |
+
+
+## **Ambre**
+ - Montage du conteneur docker pour les test sécurisé avec le dossier partagé :
+    (travail)
+    `docker run -it --name partiel_langage_c -v /c/Users/ambre/perso-esgi/PartielLangageC/PartielLangageC:/workspace ubuntu:latest`
+
+ - Une fois dans le conteneur
+    `cd /workspace`
+    `apt update && apt install -y build-essential`
+
+ - Modification du code directement sur l'ordi et exécution sur le docker
+
+ - Stoper conteneur : `docker stop partiel_langage_c`
+
+ - Reprendre le travail : `docker start -ai partiel_langage_c`
