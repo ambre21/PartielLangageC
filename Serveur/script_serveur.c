@@ -10,12 +10,12 @@
 #include <netdb.h>
 #include <errno.h>
 #include <time.h>
-#include <dirent.h> // Pour gérer les fichiers dans le dossier
+#include <dirent.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
 #define CLIENT_DIR "clients"
-#define LOG_FILE "./server.log"  // Fichier de log dans le dossier actuel
+#define LOG_FILE "./server.log"
 
 // Fonction pour écrire dans le fichier log
 void write_log(const char *message) {
@@ -38,9 +38,8 @@ int count_client_files() {
     DIR *dir = opendir(CLIENT_DIR);
 
     if (dir == NULL) {
-        // Si le dossier n'existe pas encore, retournez 0
         if (errno == ENOENT) {
-            return 0;
+            return 0; // Le dossier n'existe pas encore
         }
         perror("Erreur d'ouverture du dossier clients");
         write_log("Erreur d'ouverture du dossier clients.");
@@ -48,7 +47,6 @@ int count_client_files() {
     }
 
     while ((entry = readdir(dir)) != NULL) {
-        // Ignorer les entrées spéciales "." et ".."
         if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
             count++;
         }
@@ -81,17 +79,14 @@ void *client_handler(void *client_socket) {
     struct hostent *host_info = gethostbyaddr(&client_addr.sin_addr, sizeof(client_addr.sin_addr), AF_INET);
     const char *hostname = (host_info != NULL) ? host_info->h_name : "Inconnu";
 
-    char username[50] = "UtilisateurInconnu"; // Simulation
-
     // Afficher les informations du client dans le terminal
     printf("Nouvelle connexion :\n");
     printf("  Adresse IP : %s\n", client_ip);
     printf("  Nom d'hôte : %s\n", hostname);
-    printf("  Nom d'utilisateur : %s\n", username);
 
     // Logger les informations du client
     char log_message[256];
-    snprintf(log_message, sizeof(log_message), "Connexion client : IP=%s, Hostname=%s, Username=%s", client_ip, hostname, username);
+    snprintf(log_message, sizeof(log_message), "Connexion client : IP=%s, Hostname=%s", client_ip, hostname);
     write_log(log_message);
 
     // Créer le dossier pour les fichiers clients
@@ -106,7 +101,7 @@ void *client_handler(void *client_socket) {
     int client_id = count_client_files();
     if (client_id < 0) {
         close(sock);
-        return NULL; // Une erreur s'est produite
+        return NULL;
     }
 
     // Créer le fichier pour le client
@@ -121,16 +116,21 @@ void *client_handler(void *client_socket) {
 
     // Écrire les informations du client dans le fichier
     fprintf(file, "Adresse IP : %s\n", client_ip);
-    fprintf(file, "Nom d'hôte : %s\n", hostname);
-    fprintf(file, "Nom d'utilisateur : %s\n", username);
-    fprintf(file, "----------------------\n");
-    fflush(file); // S'assurer que les données sont écrites immédiatement
+    fflush(file);
 
-    // Recevoir les données du client et les écrire dans le fichier
+    // Recevoir les données du client et les traiter
     int bytes_received;
     while ((bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0)) > 0) {
         buffer[bytes_received] = '\0';
-        fprintf(file, "%s", buffer);
+
+        // Analyser et écrire les informations spécifiques
+        if (strstr(buffer, "Hostname: ") == buffer) {
+            fprintf(file, "Nom d'hôte : %s\n", buffer + 10); // Ajouter après "Hostname: "
+        } else if (strstr(buffer, "Username: ") == buffer) {
+            fprintf(file, "Nom d'utilisateur : %s\n", buffer + 10); // Ajouter après "Username: "
+        } else {
+            fprintf(file, "Données : %s\n", buffer); // Écrire tout autre message
+        }
         fflush(file); // S'assurer que les données sont écrites immédiatement
     }
 
