@@ -1,5 +1,7 @@
 # Projet : LD_PRELOAD Malware & C2 Server
 
+Par Ambre LAURENT et Cyprien CHAMAGNE en 3SI1
+
 ## Description
 Ce projet est une implémentation d'un malware utilisant **LD_PRELOAD**, ainsi qu'un serveur de contrôle (C2). Il inclut plusieurs fonctionnalités :
 - **Interception des credentials de connection** pour l'exfiltration des informations de connection de l'utilisateur.
