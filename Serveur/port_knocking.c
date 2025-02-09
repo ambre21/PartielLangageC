@@ -8,9 +8,9 @@
 #include <netinet/tcp.h>
 
 #define MAX_CLIENTS 10
-#define KNOCK_SEQUENCE {1234, 5678, 9101}  // Ports de knocking
+#define KNOCK_SEQUENCE {1234, 5678, 9101}
 #define SEQ_LENGTH 3
-#define TIMEOUT 10  // Temps avant expiration de la séquence (en secondes)
+#define TIMEOUT 10
 
 typedef struct {
     struct in_addr ip;
