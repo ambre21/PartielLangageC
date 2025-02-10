@@ -2,6 +2,8 @@
 
 Par Ambre LAURENT et Cyprien CHAMAGNE en 3SI1
 
+Les explications approfondies sur les notions clés, comme demandé dans le sujet, se trouvent dans le document rendu.md.
+
 ## Description
 Ce projet est une implémentation d'un malware utilisant **LD_PRELOAD**, ainsi qu'un serveur de contrôle (C2). Il inclut plusieurs fonctionnalités :
 - **Interception des credentials de connection** pour l'exfiltration des informations de connection de l'utilisateur.
